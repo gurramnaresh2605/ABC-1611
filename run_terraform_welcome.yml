@@ -1,0 +1,79 @@
+---
+- name: Execute simple Terraform script from GitHub using HTTPS and token
+  hosts: azure_vm
+  become: true
+
+  vars:
+    github_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+    terraform_zip: "/home/azureuser/terraform_1.4.6_linux_amd64.zip"
+    terraform_bin: "/usr/local/bin/terraform"
+    repo_url: "https://{{ github_token }}@github.com/gurramnaresh2605/terraform-demo.git"
+    clone_path: "/home/azureuser/terraform-demo"
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - git
+          - curl
+          - unzip
+        update_cache: yes
+        state: present
+
+    - name: Download Terraform binary using curl
+      command: >
+        curl -L -o {{ terraform_zip }} https://releases.hashicorp.com/terraform/1.4.6/terraform_1.4.6_linux_amd64.zip
+      args:
+        creates: "{{ terraform_zip }}"
+
+    - name: Unzip Terraform
+      unarchive:
+        src: "{{ terraform_zip }}"
+        dest: "/usr/local/bin/"
+        remote_src: yes
+        mode: '0755'
+
+    - name: Verify Terraform installation
+      command: terraform version
+      register: tf_version
+
+    - name: Show Terraform version
+      debug:
+        msg: "{{ tf_version.stdout }}"
+
+    - name: Clone GitHub repo using HTTPS and token
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ clone_path }}"
+        version: master
+
+    - name: Run terraform init
+      command: terraform init
+      args:
+        chdir: "{{ clone_path }}"
+
+    - name: Run terraform apply
+      command: terraform apply -auto-approve
+      args:
+        chdir: "{{ clone_path }}"
+      register: tf_output
+
+    - name: Show Terraform output
+      debug:
+        msg: "{{ tf_output.stdout_lines }}"
+
+    - name: Remove cloned GitHub repo
+      file:
+        path: "{{ clone_path }}"
+        state: absent
+
+    - name: Remove Terraform binary
+      file:
+        path: "{{ terraform_bin }}"
+        state: absent
+
+    - name: Remove Terraform ZIP
+      file:
+        path: "{{ terraform_zip }}"
+        state: absent
+
